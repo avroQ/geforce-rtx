@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  bot:
+    image: bot_image
+    build:
+      context: ./bot_image
+    depends_on:
+      - db
+    environment:
+      - TOKEN=${TOKEN}
+      - RM_HOST=${RM_HOST}
+      - RM_PORT=${RM_PORT}
+      - RM_USERNAME=${RM_USERNAME}
+      - RM_PASSWORD=${RM_PASSWORD}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  db:
+    image: db_image
+    container_name: db_container
+    build:
+      context: ./db_image
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
+    ports: ["5432:5432"]
+    restart: always
+
+  db_slave:
+    image: db_repl_image
+    build:
+      context: ./db_repl_image
+    depends_on:
+      - db
+    ports:
+      - "5433:5432"
+    restart: always
+    environment:
+      - PGUSER=${DB_REPL_USER}
+      - PGPASSWORD=${DB_REPL_PASSWORD}
+    command: |
+      bash -c "
+      rm -rf /var/lib/postgresql/data/*
+      until pg_basebackup -R -h db -U repl_user -D /var/lib/postgresql/data -P
+      do
+      echo 'Waiting for primary to connect...'
+      sleep 1s
+      done
+      echo 'Backup done, starting replica...'
+      chmod 0700 /var/lib/postgresql/data
+      echo 'Chmod is completed'
+      postgres
+      "
