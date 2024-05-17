@@ -308,8 +308,11 @@ def get_pg_logs(update, context):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=host, username=username, password=password, port=int(port))
 
+        # Директория логов
+        log_directory = '/var/lib/postgresql/14/main/log'
+
         # Выполнение команды для получения имени последнего лог-файла
-        find_command = "ls -1t /var/lib/postgresql/data/log | head -n 1"
+        find_command = f"ls -1t {log_directory} | head -n 1"
         stdin, stdout, stderr = client.exec_command(find_command)
         latest_log_file = stdout.read().strip().decode('utf-8')
 
@@ -326,7 +329,7 @@ def get_pg_logs(update, context):
             return
 
         # Выполнение команды для получения логов из последнего лог-файла
-        command = f"tail -n 10 /var/lib/postgresql/data/log/{latest_log_file}"
+        command = f"tail -n 10 {log_directory}/{latest_log_file}"
         stdin, stdout, stderr = client.exec_command(command)
         logs = stdout.read().decode('utf-8') + stderr.read().decode('utf-8')
         client.close()
