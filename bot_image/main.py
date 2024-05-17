@@ -311,8 +311,8 @@ def get_pg_logs(update, context):
         # Директория логов
         log_directory = '/var/lib/postgresql/14/main/custom_logs'
 
-        # Команда для получения последнего лог-файла
-        command = f"ls -t {log_directory}/*.log | head -1 | xargs tail -10"
+        # Команда для получения последнего лог-файла от имени пользователя postgres
+        command = f"sudo -u postgres bash -c 'ls -t {log_directory}/*.log | head -1 | xargs tail -10'"
         
         stdin, stdout, stderr = client.exec_command(command)
         logs = stdout.read().decode('utf-8')
