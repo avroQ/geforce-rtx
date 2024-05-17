@@ -300,6 +300,46 @@ def get_repl_logs(update, context):
         logger.error(f"Ошибка подключения по SSH: {e}")
         update.message.reply_text(f"Ошибка подключения по SSH: {e}")
 
+def get_pg_logs(update, context):
+    try:
+        logging.info(f"Пользователь {update.message.from_user.id} запросил информацию логов PostgreSQL")
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=host, username=username, password=password, port=int(port))
+
+        # Выполнение команды для получения имени последнего лог-файла
+        find_command = "ls -1t /var/lib/postgresql/data/log | head -n 1"
+        stdin, stdout, stderr = client.exec_command(find_command)
+        latest_log_file = stdout.read().strip().decode('utf-8')
+
+        error = stderr.read().decode('utf-8')
+        if error:
+            update.message.reply_text(f"Ошибка при получении имени последнего лог-файла: {error}")
+            logger.error(f"Ошибка при получении имени последнего лог-файла: {error}")
+            return
+
+        # Проверка, что имя файла было получено
+        if not latest_log_file:
+            update.message.reply_text("Не удалось получить имя последнего лог-файла.")
+            logger.error("Не удалось получить имя последнего лог-файла.")
+            return
+
+        # Выполнение команды для получения логов из последнего лог-файла
+        command = f"tail -n 10 /var/lib/postgresql/data/log/{latest_log_file}"
+        stdin, stdout, stderr = client.exec_command(command)
+        logs = stdout.read().decode('utf-8') + stderr.read().decode('utf-8')
+        client.close()
+
+        if not logs:
+            logs = "Логи не найдены."
+
+        update.message.reply_text(f"```\n{logs}\n```")
+        logger.info(f"Логи: {logs}")
+
+    except Exception as e:
+        logger.error(f"Ошибка подключения по SSH: {e}")
+        update.message.reply_text(f"Ошибка подключения по SSH: {e}")
             
 def get_emails(update, context):
     try:
@@ -372,6 +412,7 @@ def main():
     dp = updater.dispatcher
 
     # Логгирование для репликаций и все что связано с бд здесь
+    dp.add_handler(CommandHandler("get_pg_logs", get_pg_logs))
     dp.add_handler(CommandHandler("get_repl_logs", get_repl_logs))
     dp.add_handler(CommandHandler("get_emails", get_emails))
     dp.add_handler(CommandHandler("get_phone_numbers", get_phone_numbers))
