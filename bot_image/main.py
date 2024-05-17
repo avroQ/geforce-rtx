@@ -308,31 +308,18 @@ def get_pg_logs(update, context):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=host, username=username, password=password, port=int(port))
 
-        # Директория логов
-        log_directory = '/var/lib/postgresql/14/main/log'
-
-        # Выполнение команды для получения имени последнего лог-файла
-        find_command = f"ls -1t {log_directory} | head -n 1"
-        stdin, stdout, stderr = client.exec_command(find_command)
-        latest_log_file = stdout.read().strip().decode('utf-8')
-
-        error = stderr.read().decode('utf-8')
-        if error:
-            update.message.reply_text(f"Ошибка при получении имени последнего лог-файла: {error}")
-            logger.error(f"Ошибка при получении имени последнего лог-файла: {error}")
-            return
-
-        # Проверка, что имя файла было получено
-        if not latest_log_file:
-            update.message.reply_text("Не удалось получить имя последнего лог-файла.")
-            logger.error("Не удалось получить имя последнего лог-файла.")
-            return
-
-        # Выполнение команды для получения логов из последнего лог-файла
-        command = f"tail -n 10 {log_directory}/{latest_log_file}"
+        # Команда для получения последнего лог-файла
+        command = "ls -t /var/lib/postgresql/14/main/log/*.log | head -1 | xargs tail -10"
+        
         stdin, stdout, stderr = client.exec_command(command)
-        logs = stdout.read().decode('utf-8') + stderr.read().decode('utf-8')
+        logs = stdout.read().decode('utf-8')
+        error = stderr.read().decode('utf-8')
         client.close()
+
+        if error:
+            update.message.reply_text(f"Ошибка при получении логов: {error}")
+            logger.error(f"Ошибка при получении логов: {error}")
+            return
 
         if not logs:
             logs = "Логи не найдены."
