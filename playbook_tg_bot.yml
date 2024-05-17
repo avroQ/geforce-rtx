@@ -1,0 +1,227 @@
+- name: Install packegs on all server postgres, master and slave
+  hosts: database
+  become: yes
+  tasks:
+    - name: Install postgresql
+      ansible.builtin.package:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: latest
+
+
+- name: Configure master db
+  hosts: db
+  become: yes
+  vars_files:
+    - vars.yml
+  environment:
+    DB_USER: "{{DB_USER}}"
+    DB_PASSWORD: "{{DB_PASSWORD}}"
+    DB_HOST: "{{DB_HOST}}"
+    DB_PORT: "{{DB_PORT}}"
+    DB_DATABASE: "{{DB_DATABASE}}"
+    DB_REPL_USER: "{{DB_REPL_USER}}"
+    DB_REPL_PASSWORD: "{{DB_REPL_PASSWORD}}"
+  tasks:
+    - name: Install psycopg2
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-pip
+          - python3-psycopg2
+        state: present
+    - name: Copy postgresql.conf
+      ansible.builtin.copy:
+        src: ./postgresql.conf
+        dest: /etc/postgresql/14/main/
+        owner: postgres
+        group: postgres
+        mode: '644'
+        backup: yes
+
+    - name: Copy pg_hba.conf
+      ansible.builtin.copy:
+        src: ./pg_hba.conf
+        dest: /etc/postgresql/14/main/
+        owner: postgres
+        group: postgres
+        mode: '644'
+        backup: yes
+    - name: Create custom log directory
+      ansible.builtin.file:
+        path: /var/lib/postgresql/14/main/custom_logs
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '755'
+      notify: Restart PostgreSQL
+
+    - name: Set permissions for log directory
+      ansible.builtin.file:
+        path: /var/lib/postgresql/14/main/custom_logs
+        mode: '755'
+      become: yes
+
+    - name: Set permissions for log files
+      ansible.builtin.command: find /var/lib/postgresql/14/main/custom_logs -type f -exec chmod 644 {} \;
+      become: yes
+
+  handlers:
+    - name: Restart PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+    - name: Startup database server
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+    - name: Create replication directory
+      ansible.builtin.file:
+        path: /oracle/pg_data/archive/
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '774'
+    - name: Change password for postgres
+      command: >
+          psql -c "ALTER ROLE postgres PASSWORD '{{DB_PASSWORD}}';"
+      become: yes
+      become_user: postgres
+    - name: Create user for replication
+      become: yes
+      become_user: postgres
+      command: >
+        psql -c "DO
+        $$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{DB_REPL_USER}}') THEN
+            CREATE USER \"{{DB_REPL_USER}}\" WITH REPLICATION ENCRYPTED PASSWORD '{{DB_REPL_PASSWORD}}';
+          END IF;
+        END
+        $$;"
+    - name: Create database
+      become: yes
+      become_user: postgres
+      postgresql_db:
+        name: "{{DB_DATABASE}}"
+        owner: "{{DB_USER}}"
+    - name: Create email table
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{DB_DATABASE}}"
+        query: >
+          CREATE TABLE IF NOT EXISTS emails (
+              id SERIAL PRIMARY KEY,
+              email VARCHAR(255) UNIQUE NOT NULL
+          );
+    - name: Create phone table
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{DB_DATABASE}}"
+        query: >
+          CREATE TABLE IF NOT EXISTS phone_numbers (
+              id SERIAL PRIMARY KEY,
+              phone_number VARCHAR(20) UNIQUE NOT NULL
+          );
+    - name: Insert test into email
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{DB_DATABASE}}"
+        query: >
+          INSERT INTO emails (id, email) VALUES
+              (DEFAULT, 'dimonov88888888@mail.ru'),
+              (DEFAULT, 'yapa@gmail.com') ON CONFLICT DO NOTHING;
+    - name: Insert test data into phone table
+      become: yes
+      become_user: postgres
+      postgresql_query:
+        db: "{{DB_DATABASE}}"
+        query: >
+          INSERT INTO phone_numbers (id, phone_number) VALUES
+              (DEFAULT, '89519389382'),
+              (DEFAULT, '+79222222221') ON CONFLICT DO NOTHING;
+
+
+- hosts: db_repls
+  vars_files:
+    - vars.yml
+  tasks:
+    - service:
+        name: postgresql
+        state: stopped
+      become: true
+    - file:
+        path: /var/lib/postgresql/14/main/
+        state: absent
+      become: true
+    - file:
+        path: /var/lib/postgresql/14/main/
+        owner: postgres
+        group: postgres
+        mode: 0700
+        state: directory
+      become: true
+    - name: Start replicating
+      ansible.builtin.expect:
+        command: pg_basebackup -P -R -X stream -D /var/lib/postgresql/14/main/ -h {{DB_HOST}} -U {{DB_REPL_USER}}
+        responses:
+          Password: '{{DB_REPL_PASSWORD}}'
+      become: true
+      become_user: postgres
+    - service:
+        name: postgresql
+        state: started
+      become: true
+
+
+- name: Configure bot
+  hosts: bot
+  vars_files:
+    - vars.yml
+  become: yes
+  environment:
+    TOKEN: "{{TOKEN}}"
+    RM_HOST: "{{RM_HOST}}"
+    RM_PORT: "{{RM_PORT}}"
+    RM_USER: "{{RM_USERNAME}}"
+    RM_PASSWORD: "{{RM_PASSWORD}}"
+    DB_USER: "{{DB_USER}}"
+    DB_PASSWORD: "{{DB_PASSWORD}}"
+    DB_HOST: "{{DB_HOST}}"
+    DB_PORT: "{{DB_PORT}}"
+    DB_DATABASE: "{{DB_DATABASE}}"
+  tasks:
+    - name: Print Telegram Token
+      debug:
+        msg: "The Telegram Token is {{ TOKEN }}"
+    - name: Install python main package and git
+      ansible.builtin.package:
+        name:
+          - libpq-dev
+          - python3-dev
+          - python3-pip
+          - python3
+          - pip
+          - git
+        state: latest
+    - name: Add safe.directory for Git
+      ansible.builtin.command:
+        cmd: git config --global --add safe.directory /home/yapaans2/botans
+      become_user: yapaans2
+    - name: Setup bot from git, docker branch
+      ansible.builtin.git:
+        repo: 'https://github.com/avroQ/geforce-rtx.git'
+        version: docker
+        dest: /home/yapaans2/botans
+    - name: Install specified python requirements
+      ansible.builtin.pip:
+        requirements: /home/yapaans2/botans/bot_image/requirements.txt
+    - name: Startup bot
+      shell: python3 /home/yapaans2/botans/bot_image/main.py
+      args:
+        chdir: /home/yapaans2/botans/bot_image/

@@ -1,0 +1,18 @@
+[database]
+db ansible_host={{DB_HOST}} ansible_user=ansible ansible_password={{PASSWORD_ANSIBLE}}
+db_repls ansible_host={{DB_REPL_HOST}} ansible_user=ansible ansible_password={{PASSWORD_ANSIBLE}}
+
+[bot]
+db ansible_host={{DB_HOST}} ansible_user=ansible ansible_password={{PASSWORD_ANSIBLE}}
+
+[database:vars]
+DB_USER=postgres
+DB_PASSWORD=123
+DB_DATABASE=email_phone
+DB_HOST=192.168.0.140
+DB_PORT=5432
+DB_REPL_USER=repl_user
+DB_REPL_PASSWORD=123
+DB_REPL_HOST=192.168.0.169
+DB_REPL_PORT=5432
+PASSWORD_ANSIBLE=123
