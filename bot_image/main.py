@@ -308,8 +308,11 @@ def get_pg_logs(update, context):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname=host, username=username, password=password, port=int(port))
 
+        # Директория логов
+        log_directory = '/var/lib/postgresql/14/main/custom_logs'
+
         # Команда для получения последнего лог-файла
-        command = "ls -t /var/lib/postgresql/14/main/log/*.log | head -1 | xargs tail -10"
+        command = f"ls -t {log_directory}/*.log | head -1 | xargs tail -10"
         
         stdin, stdout, stderr = client.exec_command(command)
         logs = stdout.read().decode('utf-8')
